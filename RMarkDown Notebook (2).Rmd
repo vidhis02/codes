@@ -1,0 +1,232 @@
+library(dplyr)
+library(tidyverse)  
+library(ggplot2)
+library(zoo)
+setwd ("C:/Users/vidhi/Downloads/")
+airport <- read.csv("airports.csv")
+carrier <- read.csv("carriers.csv")
+planes <- read.csv("plane-data.csv")
+df_2005 <- read.csv("2005.csv")
+df_2006 <- read.csv("2006.csv")
+
+# Combining 2005 and 2006 data
+df <- bind_rows(df_2005, df_2006)
+# Display the first few rows of the data frame
+head(df)
+# Compute summary statistics for the data frame
+summary_df <- data.frame(
+  unique = sapply(df, function(x) length(unique(x))),
+  missing = sapply(df, function(x) sum(is.na(x))),
+  dtypes = sapply(df, class)
+)
+summary_df
+
+# Impute NA values using interpolation
+df$DepTime <- na.approx(df$DepTime)
+df$ArrTime <- na.approx(df$ArrTime)
+df$ActualElapsedTime <- na.approx(df$ActualElapsedTime)
+df$CRSElapsedTime <- na.approx(df$CRSElapsedTime)
+df$AirTime <- na.approx(df$AirTime)
+df$ArrDelay <- na.approx(df$ArrDelay)
+df$DepDelay <- na.approx(df$DepDelay)
+
+# Renaming 'DayOfWeek' to their abbreviated name manually 
+df$DayOfWeek[df$DayOfWeek == 1] <- 'Mon'
+df$DayOfWeek[df$DayOfWeek == 2] <- 'Tue'
+df$DayOfWeek[df$DayOfWeek == 3] <- 'Wed'
+df$DayOfWeek[df$DayOfWeek == 4] <- 'Thu'
+df$DayOfWeek[df$DayOfWeek == 5] <- 'Fri'
+df$DayOfWeek[df$DayOfWeek == 6] <- 'Sat'
+df$DayOfWeek[df$DayOfWeek == 7] <- 'Sun'
+# Print the first few rows of the modified data frame
+head(df)
+
+options(repr.matrix.max.cols=30, repr.matrix.max.rows=30) # set display options
+df1 <- df[, c('Year','Month','DayofMonth','DayOfWeek','DepTime','CRSDepTime','ArrTime','CRSArrTime','DepDelay','ArrDelay')]
+head(df1)
+
+#Q1.When is the best time of day, day of the week, and time of year to fly to minimise delays?
+# Define a function to convert integers/float into time format
+Timeformat <- function(i){
+  tryCatch({
+    if (!is.na(i) & i != 0) {
+      hh <- ifelse(substr(as.character(i),1,nchar(as.character(i))-2) == "24", "00", 
+                   substr(as.character(i),1,nchar(as.character(i))-2))
+      mm <- substr(as.character(i), nchar(as.character(i))-1, nchar(as.character(i)))
+      time <- paste(hh,mm,sep=":")
+      return(time)
+    }
+  }, error = function(e){})
+}
+
+# Converting CRSDepTime, CRSArrTime into time format
+df1$CRSDepTime <- sapply(df1$CRSDepTime, Timeformat)
+df1$CRSArrTime <- sapply(df1$CRSArrTime, Timeformat)
+df1[,c("CRSDepTime", "CRSArrTime")]
+
+
+# Converting Scheduled Departure time into hours format
+df1$CRSDepHour <- substr(df1$CRSDepTime, 1, 2)
+df1$CRSArrHour <- substr(df1$CRSArrTime, 1, 2)
+
+df1 %>%
+  select(CRSDepTime, CRSArrTime, CRSDepHour) %>%
+  head(10)
+# Distribution of DepDelay & ArrDelay vs Scheduled Departure Time
+df1 %>%
+  group_by(CRSDepHour) %>%
+  summarise(mean_DepDelay = mean(DepDelay),
+            mean_ArrDelay = mean(ArrDelay)) %>%
+  ggplot(aes(x = CRSDepHour, y = mean_DepDelay, fill = "Departure Delay")) +
+  geom_bar(stat = "identity", alpha = 0.8, position = "dodge") +
+  geom_bar(aes(y = mean_ArrDelay, fill = "Arrival Delay"), 
+           stat = "identity", alpha = 0.8, position = "dodge") +
+  scale_fill_manual(name = "Delay Type", values = c("blue", "red")) +
+  labs(x = "Scheduled Departure Time (24-hour format)", 
+       y = "Departure & Arrival Delays (Minutes)",
+       title = "Distribution of Departure & Arrival Delay vs Scheduled Departure Time") +
+  theme_bw()
+  
+#Departure and Arrival Delay vs Days of Week
+aggregate(DepDelay ~ DayOfWeek, data = df, FUN = mean)
+aggregate(ArrDelay ~ DayOfWeek, data = df, FUN = mean)
+# Create a data frame with your data
+data <- data.frame(DayOfWeek = 1:7, DepDelay = c(9.748144, 7.287008, 8.667562, 10.994852, 11.833480, 7.411122, 9.451415))
+# Create the plot using ggplot2
+ggplot(data, aes(x = factor(DayOfWeek), y = DepDelay)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Day of Week", y = "Departure Delay (minutes)", title = "Departure Delay by Day of Week")
+# Create a data frame with your data
+data <- data.frame(DayOfWeek = 1:7, ArrDelay = c(8.351992, 5.781027, 7.767375, 10.624869, 10.918109, 4.227678, 7.305172))
+# Create the plot using ggplot2
+ggplot(data, aes(x = factor(DayOfWeek), y = ArrDelay)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Day of Week", y = "Arrival Delay (minutes)", title = "Arrival Delay by Day of Week")
+  
+ggplot(data, aes(x = factor(DayOfWeek), y = ArrDelay)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Day of Week", y = "Arrival Delay (minutes)", title = "Arrival Delay by Day of Week")
+
+#Distribution of Departure & Arrival Delay Vs Month
+aggregate(DepDelay ~ Month, data = df, FUN = mean)
+# Create a data frame with your data
+data <- data.frame(Month = month.name, DepDelay = c(9.462038, 8.411579, 9.450445, 6.517066, 6.890169, 11.869922, 13.502481, 10.043098, 6.835366, 8.582676, 8.033964, 12.680303))
+# Create the plot using ggplot2
+ggplot(data, aes(x = Month, y = DepDelay)) +
+  geom_line() +
+  labs
+aggregate(ArrDelay ~ Month, data = df, FUN = mean)
+# Create a data frame with your data
+data <- data.frame(Month = month.name, ArrDelay = c(7.830339, 6.762707, 7.772827, 4.495351, 4.941663, 10.918863, 12.586302, 8.839966, 5.550090, 7.681673, 6.238089, 11.187479))
+# Create the plot using ggplot2
+ggplot(data, aes(x = Month, y = ArrDelay)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Month", y = "Arrival Delay (minutes)", title = "Monthly Arrival Delay")
+  
+#Q2.Do older planes suffer more delays?
+#Since most of the data is NaN in the first few rows
+head(planes, 40)
+
+df_planes <- planes %>%
+rename(YearOfManufacture = year, TailNum = tailnum)
+# Merging of df with df_planes dataset
+df2_planes <- left_join(df, df_planes %>% select(TailNum, YearOfManufacture),
+by = "TailNum")
+head(df2_planes)
+  
+# Sum of Depature Delay and Arrival Delay respectively
+df2planes_sum <- aggregate(cbind(DepDelay, ArrDelay) ~ YearOfManufacture, data = df2_planes, sum)
+ggplot(df2planes_sum, aes(x = YearOfManufacture, y = ArrDelay)) +
+  geom_bar(stat = "identity", fill = "darkorange", alpha = 0.8) +
+  labs(x = "Year of Manufacture", y = "Arrival Delay (Minutes)", 
+       title = "Distribution of Arrival Delays vs Year of Manufacture") +
+  theme_minimal() +
+theme(plot.title = element_text(hjust = 0.5), axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Bar plot of Departure Delays vs Year of Manufacture
+g2 <- ggplot(df2planes_sum, aes(x = YearOfManufacture, y = DepDelay_sum)) 
+  geom_bar(stat = "identity", fill = "steelblue", alpha = 0.8) +
+  labs(x = "Year of Manufacture", y = "Departure Delay (Minutes)", 
+       title = "Distribution of Departure Delays vs Year of Manufacture") +
+  theme_minimal() +
+theme(plot.title = element_text(hjust = 0.5), legend.position = "none")
+)
+  
+#Q3:How does the number of people flying between different locations change over time?
+# Subset datetime variables, Origin and Destination locations
+df3 <- df[c('Year', 'Month', 'DayofMonth', 'DayOfWeek', 'Origin', 'Dest')]
+head(df3)
+head(airport)
+# Finding the count of people travelling from the city of Boston(BOS) to Chicago(ORD)
+df3_location <- df3[df3$Origin == 'BOS' & df3$Dest == 'ORD', ]
+n_passengers <- nrow(df3_location)
+# Plotting the number of passengers by year, month, day, and day of week
+ggplot(df3_location, aes(x = Year)) +
+  geom_line(stat = 'count') +
+  labs(x = 'Year', y = 'Number of Passengers', title = 'Number of People Travelling from BOS to ORD') +
+  theme_minimal()
+ggplot(df3_location, aes(x = Month)) +
+  geom_line(stat = 'count') +
+  scale_x_continuous(breaks = 1:12) +
+  labs(x = 'Month', y = 'Number of Passengers', title = 'Number of People Travelling from BOS to ORD') +
+  theme_minimal()
+ggplot(df3_location, aes(x = DayofMonth)) +
+  geom_line(stat = 'count')
+  labs(x = 'Day of Month', y = 'Number of Passengers', title = 'Number of People Travelling from BOS to ORD') +
+  theme_minimal()
+
+ggplot(df3_location, aes(x = DayOfWeek)) +
+ geom_line(stat = 'count') +
+  labs(x = 'Day of Week', y = 'Number of Passengers', title = 'Number of People Travelling from BOS to ORD') +
+  theme_minimal()
+
+#Q4. Can you detect cascading failures as delays in one airport create delays in others?
+# Make a copy of dataset for Q4
+df4 <- df
+df4$Month <- sapply(df4$Month, function(x) as.numeric(format(strptime(x, "%b"), "%m")))
+# Adding a date column to the dataset
+df4$Date <- as.Date(paste(df4$Year, df4$Month, df4$DayofMonth, sep="-"))
+df4 <- df4[, c("Date", colnames(df4)[!(names(df4) %in% c("Year", "Month", "DayofMonth"))])]
+head(df4)
+# Subsetting columns required to test for cascading failures
+df4_data <- df4[, c("Date", "UniqueCarrier", "TailNum", "Origin", "Dest", "Distance", "CRSDepTime", "DepTime", "DepDelay", "CRSArrTime", "ArrTime", "ArrDelay")]
+head(df4_data)
+df4_analysis <- subset(df4_data, ArrDelay > 0 & DepDelay > 0)
+head(subset(df4_analysis, TailNum == "N326UA"), 2)
+head(subset(df4_analysis, Origin == "ORD" & TailNum == "N326UA"), 2)
+
+#Q5. Use the available variables to construct a model that predicts delays
+install.packages("caret")
+library(caret)
+df5 <- df[, c('Year', 'DayofMonth', 'DepTime', 'CRSDepTime', 'DepDelay', 'Distance', 'TaxiIn', 'TaxiOut', 'CarrierDelay', 'WeatherDelay', 'NASDelay', 'SecurityDelay')]
+head(df5)
+# Subset the main dataframe 
+df5_model <- df5[1:10000,]
+df5_model$DepartureDelay <- 0
+df5_model$DepartureDelay <- ifelse(df5_model$DepDelay > 0, 1, df5_model$DepartureDelay)
+# Seperating our variables into dependent and independent variables
+X <- df5_model[, !colnames(df5_model) %in% 'DepartureDelay'] # Independent Variables
+y <- df5_model$DepartureDelay                                 # Dependent Variable
+# Splitting our data into trainset and testset
+set.seed(123)
+trainIndex <- createDataPartition(y, p = 0.7, list = FALSE)
+X_train <- X[trainIndex,]
+X_test <- X[-trainIndex,]
+y_train <- y[trainIndex]
+y_test <- y[-trainIndex]
+# Model development using the Logistic Regression Module
+LR <- glm(DepartureDelay ~ ., data = df5_model, family = 'binomial')
+summary(LR)
+# Performing prediction on the testset
+y_predict <- predict(LR, newdata = X_test, type = 'response')
+y_predict <- ifelse(y_predict > 0.5, 1, 0)
+# Model Evaluation using Confusion Matrix
+conf <- table(y_test, y_predict)
+conf
+# Checking Classification Report
+model_summary <- caret::confusionMatrix(factor(y_predict, levels = c(0,1)), factor(y_test, levels = c(0,1)))
+print(model_summary)
+  
+
+
+  
